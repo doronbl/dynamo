@@ -221,3 +221,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- dynamo-lab -------------------------------------------------------------
+# Local settings and secrets (HF_TOKEN), account-specific launcher values.
+config/local.env
+provision/launch.local.bat
+# Benchmark output.
+bench/results/

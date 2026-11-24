@@ -1,0 +1,9 @@
+@echo off
+REM Copy to launch.local.bat (git-ignored). Overrides the defaults in launch-p5en.bat.
+set "VPC=vpc-..."
+set "SUBNET=subnet-..."
+set "SECURITY_GROUP=sg-..."
+set "AMI_ID=ami-..."
+set "EIP=eipalloc-..."
+set "KEY_NAME="
+set "PLACEMENT_GROUP="
