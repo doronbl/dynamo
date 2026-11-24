@@ -35,8 +35,9 @@ is work in progress, pushed early because the instance is a Spot instance.
 ## In progress: the direct-install switch
 
 Rewritten for the venv, **not yet tested end to end**:
-- `components/dynamo.sh` (venv install + verify). The install was running when this
-  commit was made (293 packages installed); verify still to run.
+- `components/dynamo.sh` (venv install + verify): **tested, passes** (`./setup.sh uv-python dynamo`,
+  about 2 minutes: ai-dynamo 1.6.1, vLLM 0.31.0, torch 2.13.0+cu130, Run:ai streamer).
+  `vllm download-kernels` does not exist in vLLM 0.31.0 (warning only; drop that step).
 - `components/models.sh` (uses the venv's `hf`).
 - `run/dynamo.sh` (plain processes: `setsid`, `numactl`, `CUDA_VISIBLE_DEVICES`,
   logs and PIDs in `/scratch/dynamo/{logs,pids}`, `VLLM_CACHE_ROOT` per worker).
