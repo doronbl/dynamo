@@ -28,7 +28,15 @@ PID_DIR="${DYNAMO_STATE_DIR}/pids"
 PY="${DYNAMO_VENV}/bin/python"
 
 alive() { [[ -f "${PID_DIR}/$1.pid" ]] && kill -0 "$(<"${PID_DIR}/$1.pid")" 2>/dev/null; }
-running() { local f; for f in "${PID_DIR}"/*.pid; do [[ -e "${f}" ]] || continue; alive "$(basename "${f}" .pid)" && basename "${f}" .pid; done; }
+# Names of the started processes that are still alive (always succeeds, for set -e).
+running() {
+  local f
+  for f in "${PID_DIR}"/*.pid; do
+    [[ -e "${f}" ]] || continue
+    if alive "$(basename "${f}" .pid)"; then basename "${f}" .pid; fi
+  done
+  return 0
+}
 
 # start <name> <env assignments...> -- <command...>: runs it in its own session
 # (so `down` can stop it and all its child processes), output to LOG_DIR/<name>.log.
@@ -41,7 +49,9 @@ start() {
 }
 
 common_env() {
-  COMMON=(DYN_DISCOVERY_BACKEND=file "DYN_FILE_KV=${KV_DIR}" "HF_HOME=${MODEL_CACHE_DIR}" HF_HUB_OFFLINE=1)
+  # The venv's bin first on PATH: vLLM and FlashInfer call tools installed there (ninja).
+  COMMON=("PATH=${DYNAMO_VENV}/bin:${PATH}" DYN_DISCOVERY_BACKEND=file "DYN_FILE_KV=${KV_DIR}"
+          "HF_HOME=${MODEL_CACHE_DIR}" HF_HUB_OFFLINE=1)
   [[ -n "${HF_TOKEN}" ]] && COMMON+=("HF_TOKEN=${HF_TOKEN}")
   return 0
 }
@@ -120,10 +130,13 @@ case "${cmd}" in
     [[ -d "${MODEL_CACHE_DIR}/hub/models--${MODEL//\//--}" ]] || die "${MODEL} not downloaded: MODELS=${MODEL} ./setup.sh models"
     rm -rf "${KV_DIR}"; mkdir -p "${KV_DIR}"; rm -f "${PID_DIR}"/*.pid
     common_env
+    # If anything below fails, stop whatever was started.
+    trap 'rc=$?; if ((rc != 0)); then warn "startup failed, stopping everything"; stop_all; fi' EXIT
     log "starting Dynamo ${DYNAMO_VERSION} (vLLM ${DYNAMO_VLLM_VERSION}): ${WORKERS} worker(s), model ${MODEL}, router ${ROUTER_MODE}"
     start_frontend
     for ((i = 0; i < WORKERS; i++)); do start_worker "${i}"; done
     wait_ready
+    trap - EXIT
     # What is running now, for the bench/ scripts (load_running in components/common.sh).
     printf 'MODEL=%q\nWORKERS=%q\nROUTER_MODE=%q\nHTTP_PORT=%q\n' "${MODEL}" "${WORKERS}" "${ROUTER_MODE}" "${HTTP_PORT}" >"${RUNNING_FILE}"
     ;;

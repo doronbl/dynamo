@@ -1,55 +1,46 @@
-# Work status (resume here)
+# Status and measured results
 
-Last update: 2026-11-24. The repository is being switched from **Dynamo in
-containers** to a **direct install** (one venv with `ai-dynamo[vllm]`). This commit
-is work in progress, pushed early because the instance is a Spot instance.
+Last update: 2026-11-25. Everything below was run on a p5en.48xlarge (8 x H200, AWS Deep
+Learning AMI AL2023, driver 595) in us-east-2.
 
-## Decisions made
+## Current state: complete and tested
 
-- Dynamo and vLLM are installed directly: `pip install ai-dynamo[vllm]==1.6.1` in
-  `/data/venvs/dynamo` (it pins vLLM 0.31.0, NIXL 1.4.1, the Run:ai streamer).
-  No containers for serving; no separate native-vLLM component.
-- User data (`provision/user-data.sh`) prepares storage only and does **not** clone
-  the repository.
-- Models are downloaded from Hugging Face on every new instance (`./setup.sh models`).
-- `claude-code` stays as an optional component.
-- `soci` and `bench/soci-pull.sh` stay as an optional experiment (not in
-  `./setup.sh all`; serving pulls no images). Removed: `vllm` and `docker` components.
-- Commits go straight to `main`. Keep `provision/launch-p5en.bat` simple.
+Dynamo and vLLM are installed directly (no containers): one venv
+`/data/venvs/dynamo` with `ai-dynamo[vllm]==1.6.1`, which pins vLLM 0.31.0, NIXL 1.4.1,
+FlashInfer 0.7.0.post1 (plus its prebuilt kernels) and the Run:ai Model Streamer.
 
-## Done and tested on a p5en (container version, before the switch)
+| Step | Result |
+|---|---|
+| `./setup.sh all` (base, uv-python, dynamo, models) | Passes; the venv install takes about 2 minutes (pip) plus about 1 minute for the FlashInfer prebuilt kernels |
+| `./run/dynamo.sh up` (frontend + 8 workers, `Qwen/Qwen3-30B-A3B`) | All 8 healthy after 143 s on the first start, 76 s on a restart (compile caches) |
+| `./run/dynamo.sh down` | Stops every process, nothing left running |
+| `bench/smoke.sh` | Models, Chat Completions, Responses API (streaming too), 3-turn chat all correct; round-robin put exactly 3 of 24 requests on each worker |
+| `bench/kv-cache.py`, `ROUTER_MODE=round-robin` | Every request on a different worker, 0 cached tokens, 0.76–1.38 s per request (25K-token prompt) |
+| `bench/kv-cache.py`, `ROUTER_MODE=kv` | All on the worker holding the prefix, 25,200 cached tokens per follow-up, 17–46 ms instead of about 780 ms |
+| `bench/load.sh` (input 1024, output 256) | Concurrency 1: 225 tok/s, TTFT p50 53 ms. Concurrency 64: **6,582 tok/s** total, 119 tok/s per user, TTFT p50 59 ms |
+| `bench/model-load.sh` (57 GiB from the NVMe RAID0, cold page cache) | Default loader **15.3 s**, Run:ai streamer 23.3 s (concurrency 16). Server healthy after 85 s and 90 s |
+| `bench/soci-pull.sh` (optional; 10 GB `vllm-runtime` image) | Docker 283 s, containerd overlayfs 95 s, **SOCI parallel pull 73 s** |
+| ShellCheck (`-S warning`) | Clean on all scripts |
 
-- `./setup.sh all` (base, soci, dynamo image, models), `status`, `verify`.
-- `run/dynamo.sh up` with 8 workers serving `Qwen/Qwen3-30B-A3B`: healthy about 2.5 min
-  after start (83 s on restart with the compile caches), file-based discovery, no
-  etcd/NATS.
-- `bench/smoke.sh`: models, Chat Completions, Responses API (streaming too), 3-turn
-  chat, round-robin spread exactly 3 requests on each of 8 workers.
-- `bench/kv-cache.py`: round-robin = no cache hits; `ROUTER_MODE=kv` = 25,200 cached
-  tokens per follow-up, latency about 800 ms -> 20-50 ms, same worker.
-- `bench/load.sh`: 8 workers, concurrency 64: about 5,970 output tokens/s.
-- `bench/soci-pull.sh` (10 GB vllm-runtime image): Docker 283 s, overlayfs 95 s,
-  SOCI parallel pull 73 s.
-- ShellCheck (`-S warning`) clean on all scripts.
+Not run on a fresh instance end to end: `provision/launch-p5en.bat` (Windows) and the
+new minimal `provision/user-data.sh`. The user data keeps the storage steps of the
+user data this instance booted with, unchanged apart from removing everything else.
 
-## In progress: the direct-install switch
+## Lessons from testing (already handled in the scripts)
 
-Rewritten for the venv, **not yet tested end to end**:
-- `components/dynamo.sh` (venv install + verify): **tested, passes** (`./setup.sh uv-python dynamo`,
-  about 2 minutes: ai-dynamo 1.6.1, vLLM 0.31.0, torch 2.13.0+cu130, Run:ai streamer).
-  `vllm download-kernels` does not exist in vLLM 0.31.0 (warning only; drop that step).
-- `components/models.sh` (uses the venv's `hf`).
-- `run/dynamo.sh` (plain processes: `setsid`, `numactl`, `CUDA_VISIBLE_DEVICES`,
-  logs and PIDs in `/scratch/dynamo/{logs,pids}`, `VLLM_CACHE_ROOT` per worker).
-- `bench/load.sh` and `bench/model-load.sh` (venv `vllm`).
+- FlashInfer compiles some kernels at runtime and needs `ninja` from the venv: every
+  process gets the venv's `bin` first on `PATH`, and the prebuilt kernel packages
+  (`flashinfer-cubin`, `flashinfer-jit-cache`) are installed to keep compilation short.
+- `vllm download-kernels` does not exist in vLLM 0.31.0; the component installs the
+  FlashInfer kernel packages directly.
+- Hugging Face snapshot folders are symlinks into `blobs/`: pass the snapshot path,
+  not a copy of the folder.
+- From local NVMe the default loader beats the Run:ai streamer; Run:ai is meant for
+  streaming from remote storage (S3), the next experiment.
 
-## Next steps
+## Ideas for next experiments
 
-1. `./setup.sh all` on the instance (base, uv-python, dynamo, models); fix what fails.
-2. `./run/dynamo.sh up`, then `bench/smoke.sh`, `bench/kv-cache.py` (round-robin and
-   `ROUTER_MODE=kv`), `bench/load.sh`, `./run/dynamo.sh down`.
-3. `bench/model-load.sh` (default loader vs Run:ai streamer; not measured yet).
-4. Update `README.md` and `docs/components.md`: they still describe the container
-   version in places (Dynamo image, nerdctl, `vllm`/`docker` components).
-5. Small fix: `components/uv-python.sh` verify prints "Python Python 3.12.16".
-6. ShellCheck again, commit, push.
+- Run:ai streamer from S3 (`--load-format runai_streamer` with an `s3://` model path).
+- Disaggregated serving (separate prefill and decode workers, KV transfer with NIXL).
+- Larger models with tensor or expert parallelism across GPUs.
+- etcd/NATS discovery, to match a multi-node setup.

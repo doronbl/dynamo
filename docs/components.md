@@ -1,7 +1,7 @@
 # Components: what each one does and why
 
-Short notes per building block. Versions are in `config/versions.env`, settings in
-`config/settings.env`.
+Short notes per building block, in install order. Versions are in
+`config/versions.env`, settings in `config/settings.env`.
 
 ## Storage (provision/user-data.sh)
 
@@ -13,39 +13,41 @@ Short notes per building block. Versions are in `config/versions.env`, settings 
   instance**, so it holds only caches: container images, models, vLLM compile caches.
 - **Why the image stores move:** containerd (`/var/lib/containerd`) and the SOCI
   snapshotter (`/var/lib/soci-snapshotter-grpc`) are bind-mounted onto `/scratch`, so
-  a 10 GB image unpacks on NVMe instead of the 50 GB root volume.
+  a 10 GB image unpacks on NVMe instead of the 50 GB root volume (only relevant when
+  you run containers, for example the SOCI experiment).
   `scratch-nvme.service` does this on every boot, before containerd starts.
 
 ## base
 
-The AWS Deep Learning AMI already has the NVIDIA driver, containerd, the SOCI
-snapshotter, nerdctl, Docker and the NVIDIA container toolkit. `base` adds `numactl`
-(NUMA pinning), `jq` and `git`, and checks the GPUs and both mounts.
+The AWS Deep Learning AMI already has the NVIDIA driver (and containerd, SOCI,
+nerdctl and Docker for container work). `base` adds `numactl` (NUMA pinning of the
+workers), `jq` and `git`, and checks the GPUs and both mounts.
 
-## soci
+## uv-python
 
-The **SOCI snapshotter** is a containerd plugin that pulls images faster.
-- **Parallel pull and unpack** (what this repository uses): downloads and unpacks the
-  layers of any image concurrently. No preparation of the image is needed.
-- **Lazy loading** (not used here): starts a container before its image is fully
-  downloaded, but needs a SOCI index built for the image.
-
-The AMI ships SOCI with parallel pull off and nerdctl on the plain `overlayfs`
-snapshotter. The component turns parallel pull on and makes `soci` nerdctl's default.
-Docker never uses SOCI: it has its own image store. Compare them with
-`bench/soci-pull.sh`.
+[uv](https://docs.astral.sh/uv/) installs Python and Python packages quickly. Its
+Python builds and package cache are on `/data`, on the same filesystem as the venvs,
+so uv clones files from the cache instead of copying them.
 
 ## dynamo
 
 NVIDIA Dynamo is a serving layer above inference engines such as vLLM. It provides an
 OpenAI-compatible **frontend** with a **router** (round-robin, KV-cache-aware and
-others) and runs the engines as **workers**. Here it runs from NVIDIA's
-`vllm-runtime` image, which contains Dynamo, vLLM, the CUDA libraries and the Run:ai
-Model Streamer, so none of that is installed on the host.
+others) and runs the engines as **workers**.
 
-The image is pinned **by digest**: a tag such as `1.6.1` could be re-pushed, a digest
-cannot. The `verify` step runs the image and checks that its Dynamo and vLLM versions
-match `config/versions.env`.
+Here it is installed directly with pip into one virtual environment,
+`/data/venvs/dynamo`: `ai-dynamo[vllm]==DYNAMO_VERSION`. The `[vllm]` extra pins the
+vLLM release Dynamo was tested with (1.6.1 -> vLLM 0.31.0) and brings
+NIXL (the library that moves KV cache between workers), FlashInfer (attention
+kernels) and the Run:ai Model Streamer. PyTorch and the CUDA libraries come as pip
+wheels built for `CUDA_VARIANT` (`cu130`); the AMI only provides the NVIDIA driver,
+which must support that CUDA version (`nvidia-smi` shows the highest it supports).
+The same venv has `vllm serve`, `vllm bench serve` and the `hf` CLI.
+
+Because it is a plain venv, you can read and change the code
+(`/data/venvs/dynamo/lib/python3.12/site-packages/dynamo/`, `.../vllm/`), run any piece
+by hand (`source /data/venvs/dynamo/bin/activate; python -m dynamo.vllm --help`) and
+attach a debugger or profiler to the running processes.
 
 **Single host, no etcd/NATS:** the frontend finds workers through files in a shared
 directory (`DYN_DISCOVERY_BACKEND=file`), requests use TCP, and KV events (for
@@ -54,34 +56,31 @@ directory (`DYN_DISCOVERY_BACKEND=file`), requests use TCP, and KV events (for
 ## models
 
 Downloads the Hugging Face models listed in `MODELS` into `/scratch/hf`, **once per
-instance**. Every worker mounts that directory as its Hugging Face cache and starts
-with `HF_HUB_OFFLINE=1`, so the 8 workers never download 8 copies. The download runs
-in the Dynamo image, which has the `hf` CLI.
-
-## uv-python (optional)
-
-[uv](https://docs.astral.sh/uv/) installs Python and Python packages quickly. Its
-Python builds and package cache are on `/data`, on the same filesystem as the venvs,
-so uv clones files from the cache instead of copying them.
-
-## vllm (optional)
-
-Native vLLM in `/data/venvs/vllm`, pinned to `VLLM_VERSION` and built against
-`VLLM_CUDA_VARIANT`. It is **not needed to serve with Dynamo**. Use it for plain
-`vllm serve` experiments or to try a newer vLLM than the Dynamo image has. The venv
-brings its own CUDA libraries; the AMI's driver must support the CUDA version
-(`nvidia-smi` shows the highest it supports).
-
-## docker (optional)
-
-Moves Docker's storage to `/data/docker` and registers the NVIDIA runtime. Only for
-comparisons: the Dynamo scripts use nerdctl, which uses containerd and SOCI.
+instance**, with the venv's `hf` CLI. Every worker uses that directory as its Hugging
+Face cache (`HF_HOME`) and starts with `HF_HUB_OFFLINE=1`, so the 8 workers never
+download 8 copies.
 
 ## claude-code (optional)
 
 Installs Claude Code for ec2-user and configures it for Amazon Bedrock in the
 instance's Region (from instance metadata). Model IDs are `CLAUDE_*` in
 `config/settings.env`; the instance role needs Bedrock invoke permissions.
+
+## soci (optional)
+
+The **SOCI snapshotter** is a containerd plugin that pulls **container images**
+faster. Serving here uses no containers, so it is only an experiment
+(`bench/soci-pull.sh`); it matters for container-based setups such as EKS, where every
+new node pulls a large image.
+- **Parallel pull and unpack** (what the component enables): downloads and unpacks the
+  layers of any image concurrently, no preparation of the image needed. Measured on a
+  p5en for the 10 GB Dynamo image: Docker 283 s, containerd overlayfs 95 s, SOCI 73 s.
+- **Lazy loading** (not used): starts a container before its image is fully
+  downloaded, but needs a SOCI index built for the image.
+
+The AMI ships SOCI with parallel pull off and nerdctl on the plain `overlayfs`
+snapshotter; the component turns parallel pull on and makes `soci` nerdctl's default.
+Docker never uses SOCI: it has its own image store.
 
 ## run/dynamo.sh: how one request flows
 

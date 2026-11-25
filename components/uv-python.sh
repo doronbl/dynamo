@@ -30,5 +30,5 @@ EOF
 verify() {
   export PATH="${HOME}/.local/bin:${PATH}"
   command -v uv >/dev/null || die "uv not on PATH"
-  ok "$(uv --version), Python $(uv python find "${PYTHON_VERSION}" >/dev/null && "$(uv python find "${PYTHON_VERSION}")" -V 2>&1)"
+  ok "$(uv --version), $("$(uv python find "${PYTHON_VERSION}")" -V 2>&1)"
 }

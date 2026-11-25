@@ -30,9 +30,14 @@ install() {
     "ai-dynamo[vllm]==${DYNAMO_VERSION}" "vllm==${DYNAMO_VLLM_VERSION}" \
     --extra-index-url "https://wheels.vllm.ai/${DYNAMO_VLLM_VERSION}/${CUDA_VARIANT}" \
     --torch-backend="${CUDA_VARIANT}"
-  # Prebuilt FlashInfer kernels, so the first start does not compile them.
-  "${DYNAMO_VENV}/bin/vllm" download-kernels >/dev/null 2>&1 \
-    || warn "vllm download-kernels not available or failed (kernels compile at the first start)"
+  # FlashInfer (attention and sampling kernels) compiles its kernels on first use
+  # unless its prebuilt kernels are installed: flashinfer-cubin and
+  # flashinfer-jit-cache, for the exact flashinfer-python version vLLM pulled in.
+  local fi_version
+  fi_version="$("${DYNAMO_VENV}/bin/python" -c 'import importlib.metadata as m; print(m.version("flashinfer-python"))')"
+  VIRTUAL_ENV="${DYNAMO_VENV}" retry 2 30 uv pip install --no-deps \
+    "flashinfer-cubin==${fi_version}" "flashinfer-jit-cache==${fi_version}+${CUDA_VARIANT}" \
+    --extra-index-url https://flashinfer.ai/whl --extra-index-url "https://flashinfer.ai/whl/${CUDA_VARIANT}"
   mkdir -p "${DYNAMO_STATE_DIR}" 2>/dev/null || { as_root mkdir -p "${DYNAMO_STATE_DIR}"; as_root chown "$(id -u):$(id -g)" "${DYNAMO_STATE_DIR}"; }
 }
 
@@ -48,6 +53,8 @@ print(m.version("ai-dynamo"), m.version("vllm"), torch.__version__, torch.versio
   [[ "${gpus}" == "1" ]] || die "PyTorch sees ${gpus:-no} GPU(s) with CUDA_VISIBLE_DEVICES=0 (driver vs ${CUDA_VARIANT}?)"
   "${DYNAMO_VENV}/bin/python" -c 'import dynamo.frontend, dynamo.vllm, runai_model_streamer' 2>/dev/null \
     || die "cannot import dynamo.frontend, dynamo.vllm or runai_model_streamer"
-  ok "ai-dynamo ${dyn}, vLLM ${vllm}, torch ${torch} (CUDA ${cuda}), Run:ai streamer, GPU visible"
+  "${DYNAMO_VENV}/bin/python" -c 'import importlib.metadata as m; v = m.version("flashinfer-python"); assert m.version("flashinfer-cubin") == v and m.version("flashinfer-jit-cache").startswith(v + "+")' 2>/dev/null \
+    || die "FlashInfer prebuilt kernels (flashinfer-cubin, flashinfer-jit-cache) missing or not matching flashinfer-python"
+  ok "ai-dynamo ${dyn}, vLLM ${vllm}, torch ${torch} (CUDA ${cuda}), FlashInfer prebuilt kernels, Run:ai streamer, GPU visible"
   ok "use it: source ${DYNAMO_VENV}/bin/activate"
 }

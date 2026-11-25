@@ -32,7 +32,7 @@ for loader in ${LOADERS}; do
   extra=(--load-format "${loader}")
   [[ "${loader}" == runai_streamer ]] && extra+=(--model-loader-extra-config "{\"concurrency\": ${RUNAI_CONCURRENCY}}")
   start=${SECONDS}
-  CUDA_VISIBLE_DEVICES="${GPU}" HF_HOME="${MODEL_CACHE_DIR}" HF_HUB_OFFLINE=1 \
+  PATH="${DYNAMO_VENV}/bin:${PATH}" CUDA_VISIBLE_DEVICES="${GPU}" HF_HOME="${MODEL_CACHE_DIR}" HF_HUB_OFFLINE=1 \
     VLLM_CACHE_ROOT="${SCRATCH_DIR}/vllm-cache/worker-${GPU}" \
     setsid numactl --cpunodebind="${node}" --membind="${node}" \
     "${DYNAMO_VENV}/bin/vllm" serve "${snap}" --served-model-name "${MODEL}" --port "${PORT}" "${extra[@]}" \
