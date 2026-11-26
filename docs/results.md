@@ -21,7 +21,7 @@ FlashInfer 0.7.0.post1 plus its prebuilt kernels and the Run:ai Model Streamer).
 
 ## Fresh instance from the repository
 
- a new p5en launched with `provision/launch-p5en.bat`
+A new p5en launched with `provision/launch-p5en.bat`
 and the minimal `provision/user-data.sh` (user data done about 3 minutes after launch:
 `/data` 500 GB EBS with the home folder, `/scratch` RAID0 of 8 NVMe drives = 28 TB, image
 stores on it, 8 GPUs). Then, from a fresh clone: `./setup.sh all` in 3.5 minutes
