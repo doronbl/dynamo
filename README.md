@@ -43,7 +43,7 @@ plain processes you can inspect, debug and change. No containers.
 provision\launch-p5en.bat
 
 # on the instance, after "sudo cloud-init status --wait" (log out and in once if you logged in early)
-git clone https://github.com/doronbl/dynamo.git && cd dynamo
+cd /data/workspace && git clone https://github.com/doronbl/dynamo.git && cd dynamo
 cp config/local.env.example config/local.env    # optional: add HF_TOKEN
 ./setup.sh all          # base, uv-python, dynamo, models  (pip install ~2 min + model download)
 ./run/dynamo.sh up      # frontend + 8 workers serving Qwen/Qwen3-30B-A3B

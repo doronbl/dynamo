@@ -22,9 +22,17 @@ FlashInfer 0.7.0.post1 (plus its prebuilt kernels) and the Run:ai Model Streamer
 | `bench/soci-pull.sh` (optional; 10 GB `vllm-runtime` image) | Docker 283 s, containerd overlayfs 95 s, **SOCI parallel pull 73 s** |
 | ShellCheck (`-S warning`) | Clean on all scripts |
 
-Not run on a fresh instance end to end: `provision/launch-p5en.bat` (Windows) and the
-new minimal `provision/user-data.sh`. The user data keeps the storage steps of the
-user data this instance booted with, unchanged apart from removing everything else.
+**Fresh instance, 2026-11-26:** a new p5en launched with `provision/launch-p5en.bat`
+and the minimal `provision/user-data.sh` (user data done about 3 minutes after launch:
+`/data` 500 GB EBS with the home folder, `/scratch` RAID0 of 8 NVMe drives = 28 TB, image
+stores on it, 8 GPUs). Then, from a fresh clone: `./setup.sh all` in 3.5 minutes
+(including the 57 GB model download), `status` and `verify` ok, 8 workers healthy after
+229 s, `bench/smoke.sh` and `bench/kv-cache.py` correct, `down` clean.
+
+Each instance needs **its own Elastic IP** in `provision/launch.local.bat`: the
+launcher associates it with `--allow-reassociation`, which silently moves an EIP that
+is still attached to another instance (and leaves that instance without internet
+access, so without SSM).
 
 ## Lessons from testing (already handled in the scripts)
 

@@ -176,7 +176,7 @@ echo  Public IP: %PUBIP%
 echo  SSM      : aws ssm start-session %AWSARGS% --target %INSTANCE_ID%
 if not "%KEY_NAME%"=="" echo  SSH      : ssh -i %KEY_NAME%.pem ec2-user@%PUBIP%
 echo  Progress : sudo tail -f /var/log/user-data.log   (done: sudo cloud-init status --wait)
-echo  Next     : git clone https://github.com/doronbl/dynamo.git ^&^& cd dynamo ^&^& ./setup.sh all
+echo  Next     : cd /data/workspace ^&^& git clone https://github.com/doronbl/dynamo.git ^&^& cd dynamo ^&^& ./setup.sh all
 echo             ./run/dynamo.sh up
 echo ================================================================
 endlocal
