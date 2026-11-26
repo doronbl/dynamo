@@ -34,7 +34,7 @@ plain processes you can inspect, debug and change. No containers.
 | `run/dynamo.sh` | Starts and stops the Dynamo frontend and workers |
 | `bench/` | Smoke test, load test, KV-cache and model-load benchmarks; optional SOCI pull experiment |
 | `docs/components.md` | What each component does and why |
-| `docs/STATUS.md` | Work status, measured results and next steps |
+| `docs/results.md` | Measured reference results, lessons learned, ideas for next experiments |
 
 ## Quick start
 
@@ -63,7 +63,7 @@ ROUTER_MODE=kv ./run/dynamo.sh up && python3 bench/kv-cache.py   # kv: follow-up
 ./run/dynamo.sh down && ./bench/model-load.sh                    # needs a free GPU
 ```
 
-Expected results from a p5en are in [`docs/STATUS.md`](docs/STATUS.md).
+Expected results from a p5en are in [`docs/results.md`](docs/results.md).
 
 Then call the OpenAI-compatible API on `http://localhost:8000/v1` (Chat Completions,
 Completions, Responses), for example:

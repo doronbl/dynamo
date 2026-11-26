@@ -1,13 +1,10 @@
-# Status and measured results
+# Measured results
 
-Last update: 2026-11-25. Everything below was run on a p5en.48xlarge (8 x H200, AWS Deep
-Learning AMI AL2023, driver 595) in us-east-2.
-
-## Current state: complete and tested
-
-Dynamo and vLLM are installed directly (no containers): one venv
+Reference numbers for a working setup: compare a new instance against them. Measured on
+p5en.48xlarge instances (8 x H200, AWS Deep Learning AMI AL2023, driver 595) in
+us-east-2, November 2026, with Dynamo 1.6.1 and vLLM 0.31.0 installed directly (one venv
 `/data/venvs/dynamo` with `ai-dynamo[vllm]==1.6.1`, which pins vLLM 0.31.0, NIXL 1.4.1,
-FlashInfer 0.7.0.post1 (plus its prebuilt kernels) and the Run:ai Model Streamer.
+FlashInfer 0.7.0.post1 plus its prebuilt kernels and the Run:ai Model Streamer).
 
 | Step | Result |
 |---|---|
@@ -22,7 +19,9 @@ FlashInfer 0.7.0.post1 (plus its prebuilt kernels) and the Run:ai Model Streamer
 | `bench/soci-pull.sh` (optional; 10 GB `vllm-runtime` image) | Docker 283 s, containerd overlayfs 95 s, **SOCI parallel pull 73 s** |
 | ShellCheck (`-S warning`) | Clean on all scripts |
 
-**Fresh instance, 2026-11-26:** a new p5en launched with `provision/launch-p5en.bat`
+## Fresh instance from the repository
+
+ a new p5en launched with `provision/launch-p5en.bat`
 and the minimal `provision/user-data.sh` (user data done about 3 minutes after launch:
 `/data` 500 GB EBS with the home folder, `/scratch` RAID0 of 8 NVMe drives = 28 TB, image
 stores on it, 8 GPUs). Then, from a fresh clone: `./setup.sh all` in 3.5 minutes
@@ -34,7 +33,7 @@ launcher associates it with `--allow-reassociation`, which silently moves an EIP
 is still attached to another instance (and leaves that instance without internet
 access, so without SSM).
 
-## Lessons from testing (already handled in the scripts)
+## Lessons learned (already handled in the scripts)
 
 - FlashInfer compiles some kernels at runtime and needs `ninja` from the venv: every
   process gets the venv's `bin` first on `PATH`, and the prebuilt kernel packages
